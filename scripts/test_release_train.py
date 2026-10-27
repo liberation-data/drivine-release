@@ -1,10 +1,15 @@
-"""Tests for the parts of release_train.py that don't call GitHub. Run: python3 -m unittest discover scripts"""
+"""Tests for the release-train scripts' logic, with gh mocked. Run: python3 -m unittest discover -s scripts"""
 
 import datetime as dt
 import unittest
+from unittest import mock
 
+import release_train
+from prepare_train import check_choice
+from record_train import check_manifest
 from release_train import (
-    BY_NAME, ReleaseError, bump, check_train, highest_release_tag, pep440, pick_new_run, resolve_target, sort_key,
+    BY_NAME, ReleaseError, bump, check_train, dispatch, highest_release_tag, pep440, pick_new_run, resolve_target,
+    sort_key, watch,
 )
 
 
@@ -57,7 +62,7 @@ class TrainTest(unittest.TestCase):
     def test_names(self):
         self.assertEqual(check_train("2026.11"), "2026.11")
         self.assertEqual(check_train("2026.11.2"), "2026.11.2")
-        for bad in ("2026.13", "2026-11", "26.11", "2026.11.0", "2026.1"):
+        for bad in ("2026.13", "2026-11", "26.11", "2026.11.0", "2026.1", "2026.11\n"):
             with self.assertRaises(ReleaseError):
                 check_train(bad)
 
@@ -81,6 +86,65 @@ class PickRunTest(unittest.TestCase):
         ]
         self.assertEqual(pick_new_run(runs, {1, 4}, since)["databaseId"], 2)
         self.assertIsNone(pick_new_run(runs[:1], set(), since))
+
+
+class DispatchTest(unittest.TestCase):
+    def test_finds_the_new_run_when_gh_prints_no_url(self):
+        now = dt.datetime.now(dt.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        old = {"databaseId": 1, "createdAt": "2026-01-01T00:00:00Z", "url": "u1"}
+        new = {"databaseId": 2, "createdAt": now, "url": "u2"}
+        listings = iter([[old], [old], [new, old]])
+        gh = mock.Mock(return_value=mock.Mock(stdout=""))
+        with mock.patch.object(release_train, "_list_dispatch_runs", lambda *a: next(listings)), \
+                mock.patch.object(release_train, "gh", gh):
+            run = dispatch("o/r", "release.yml", "main", {"version": "1.0.0"}, sleep=lambda s: None)
+        self.assertEqual(run["databaseId"], 2)
+        gh.assert_called_once_with("workflow", "run", "release.yml", "-R", "o/r", "--ref", "main", "-f", "version=1.0.0")
+
+    def test_takes_the_url_gh_prints(self):
+        out = "Created workflow_dispatch event\nhttps://github.com/o/r/actions/runs/42\n"
+        with mock.patch.object(release_train, "_list_dispatch_runs", lambda *a: []), \
+                mock.patch.object(release_train, "gh", mock.Mock(return_value=mock.Mock(stdout=out))):
+            self.assertEqual(dispatch("o/r", "release.yml", "main", {})["databaseId"], 42)
+
+    def test_gives_up(self):
+        with mock.patch.object(release_train, "_list_dispatch_runs", lambda *a: []), \
+                mock.patch.object(release_train, "gh", mock.Mock(return_value=mock.Mock(stdout=""))):
+            with self.assertRaises(ReleaseError):
+                dispatch("o/r", "release.yml", "main", {}, attempts=2, sleep=lambda s: None)
+
+
+class WatchTest(unittest.TestCase):
+    def test_watches_again_when_gh_returns_before_the_run_finishes(self):
+        views = iter([{"status": "in_progress", "conclusion": ""}, {"status": "completed", "conclusion": "failure"}])
+        with mock.patch.object(release_train.subprocess, "run") as run, \
+                mock.patch.object(release_train, "gh_json", lambda *a: next(views)):
+            self.assertEqual(watch("o/r", 7, sleep=lambda s: None), "failure")
+        self.assertEqual(run.call_count, 2)
+
+
+class ChoiceTest(unittest.TestCase):
+    def test_choices(self):
+        for good in ("skip", "patch", "prerelease", "1.2.3", " 1.2.3-rc.1 "):
+            self.assertEqual(check_choice("drivine", good), good.strip())
+        for bad in ("v1.2.3", "1.2", "--ref=x", "patch; rm", "", "1.2.3\n-f x=y"):
+            with self.assertRaises(ReleaseError):
+                check_choice("drivine", bad)
+
+
+class ManifestTest(unittest.TestCase):
+    def manifest(self, **changes):
+        return {"train": "2026.11", "spec": "v0.6.16", "libraries": {"drivine4j": "0.4.0", "drivine": "4.0.0"},
+                "released": None, **changes}
+
+    def test_accepts_a_draft(self):
+        check_manifest("2026.11", self.manifest())
+
+    def test_refuses_a_bad_one(self):
+        for bad in (self.manifest(train="2026.10"), self.manifest(libraries={}), self.manifest(spec=""),
+                    self.manifest(libraries={"drivine-go": "1.0.0"}), self.manifest(libraries={"drivine": "4.0"})):
+            with self.assertRaises(ReleaseError):
+                check_manifest("2026.11", bad)
 
 
 if __name__ == "__main__":

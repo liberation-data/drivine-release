@@ -29,10 +29,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check that every library shipped
         env:
-          # Only reads public repos, so this repo's token does when RELEASE_TOKEN isn't set.
-          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          # It only reads the public library repos, so this repo's token does; RELEASE_TOKEN isn't needed.
+          GH_TOKEN: ${{ github.token }}
           TRAIN: ${{ inputs.train }}
-        run: python3 scripts/record_train.py --train "$TRAIN" --notes-out "$RUNNER_TEMP/notes.md"
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          # The recorded manifest is pushed to the default branch, so it's checked out from there.
+          if [[ "$GITHUB_REF" != "refs/heads/$BASE" ]]; then
+            echo "::error::Run Record train from $BASE, not $GITHUB_REF"
+            exit 1
+          fi
+          python3 scripts/record_train.py --train "$TRAIN" --notes-out "$RUNNER_TEMP/notes.md"
       - name: Commit the manifest and create the release
         env:
           GH_TOKEN: ${{ github.token }}

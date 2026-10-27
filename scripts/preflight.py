@@ -22,8 +22,9 @@ from release_train import (
 
 
 def latest_ci(repo: str, branch: str) -> dict | None:
-    runs = gh_json("run", "list", "-R", repo, "--branch", branch, "--workflow", "ci.yml", "--limit", "1",
-                   "--json", "databaseId,status,conclusion,headSha,url")
+    # --event push: a pull request from a fork's branch of the same name would otherwise count as the branch's.
+    runs = gh_json("run", "list", "-R", repo, "--branch", branch, "--workflow", "ci.yml", "--event", "push",
+                   "--limit", "1", "--json", "databaseId,status,conclusion,headSha,url")
     return runs[0] if runs else None
 
 

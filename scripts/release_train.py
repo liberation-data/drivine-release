@@ -153,14 +153,14 @@ BUMPS = ("patch", "minor", "major", "prerelease")
 
 
 def parse(version: str) -> tuple[int, int, int, Optional[str]]:
-    m = SEMVER.match(version)
+    m = SEMVER.fullmatch(version)
     if not m:
         raise ReleaseError(f"{version} isn't a version of the form X.Y.Z or X.Y.Z-suffix")
     return int(m.group(1)), int(m.group(2)), int(m.group(3)), m.group(4)
 
 
 def is_version(version: str) -> bool:
-    return bool(SEMVER.match(version))
+    return bool(SEMVER.fullmatch(version))
 
 
 def bump(version: str, kind: str) -> str:
@@ -214,7 +214,7 @@ _PEP440_PRE = [
 
 def pep440(version: str) -> str:
     """The PEP 440 normal form PyPI lists a version under: 0.3.0-rc.1 -> 0.3.0rc1, 0.3.0-beta.2 -> 0.3.0b2."""
-    m = SEMVER.match(version)
+    m = SEMVER.fullmatch(version)
     if not m or not m.group(4):
         return version
     base = version.split("-", 1)[0]
@@ -242,7 +242,7 @@ TRAIN = re.compile(r"^\d{4}\.(0[1-9]|1[0-2])(\.[1-9]\d*)?$")
 
 
 def check_train(train: str) -> str:
-    if not TRAIN.match(train):
+    if not TRAIN.fullmatch(train):
         raise ReleaseError(f"The train {train!r} isn't YYYY.MM (or YYYY.MM.N for a second train in a month)")
     return train
 
@@ -308,12 +308,17 @@ def dispatch(repo: str, workflow: str, branch: str, fields: dict[str, str],
                        f"{int(attempts * delay)}s. Look in https://github.com/{repo}/actions/workflows/{workflow}")
 
 
-def watch(repo: str, run_id: int) -> str:
+def watch(repo: str, run_id: int, attempts: int = 5, sleep: Callable[[float], None] = time.sleep) -> str:
     """Waits for a run to finish, with its log going to this job's log, and returns its conclusion."""
-    print(f"::group::{repo} run {run_id}", flush=True)
-    subprocess.run(["gh", "run", "watch", str(run_id), "-R", repo, "--exit-status", "--interval", "30"])
-    print("::endgroup::", flush=True)
-    view = gh_json("run", "view", str(run_id), "-R", repo, "--json", "status,conclusion")
+    # gh run watch can return early on an API error while the run goes on, so it's started again until it's done.
+    for _ in range(attempts):
+        print(f"::group::{repo} run {run_id}", flush=True)
+        subprocess.run(["gh", "run", "watch", str(run_id), "-R", repo, "--exit-status", "--interval", "30"])
+        print("::endgroup::", flush=True)
+        view = gh_json("run", "view", str(run_id), "-R", repo, "--json", "status,conclusion")
+        if view.get("status") == "completed":
+            break
+        sleep(30)
     return view.get("conclusion") or view.get("status") or "unknown"
 
 

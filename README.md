@@ -64,14 +64,15 @@ All three workflows are under **Actions** in this repo, and start with **Run wor
    PEP 440 reads `X.Y.Z-0` as a post-release, so the controller never makes one.
 
    Running it again for the same train reuses a library release PR that's still open, and replaces the draft
-   manifest.
+   manifest. A library whose release PR has already merged would be bumped again, so give it `skip` on the re-run:
+   it's then recorded at the version it released.
 
 3. **Review and merge each library's release PR.** Merging it releases that library: its `release.yml` tags
    `v<version>` and publishes, after the approval its `release` environment asks for.
 
    Merge the draft manifest PR here too. (Record train also reads the draft from its branch if it isn't merged.)
 
-4. **Record train**, with input `train`, once every library has published. It checks, for each library in the
+4. **Record train**, from `main` with input `train`, once every library has published. It checks, for each library in the
    manifest, that tag `v<version>` exists and that the registry has the version:
    - Maven Central: `https://repo1.maven.org/maven2/org/drivine/drivine4j/<version>/drivine4j-<version>.pom`
    - npm: `npm view @liberation-data/drivine@<version> version`
