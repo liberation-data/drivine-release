@@ -60,8 +60,8 @@ All three workflows are under **Actions** in this repo, and start with **Run wor
    manifest agree, waits for each run, and finds the release PR it opened. Last, it opens a PR to this repo with
    the draft manifest, `trains/<train>.json`, on branch `train/<train>`. The job summary lists the PRs.
 
-   A bump from a release to a `prerelease` gives `X.Y.(Z+1)-rc.1`; from a prerelease it counts up (`-rc.2`).
-   PEP 440 reads `X.Y.Z-0` as a post-release, so the controller never makes one.
+   A bump from a release to a `prerelease` gives `X.Y.(Z+1)-rc.0`, as each library's own Prepare release does; from
+   an `-rc.N` it counts up (`-rc.1`).
 
    Running it again for the same train reuses a library release PR that's still open, and replaces the draft
    manifest. A library whose release PR has already merged would be bumped again, so give it `skip` on the re-run:
@@ -88,12 +88,11 @@ All three workflows are under **Actions** in this repo, and start with **Run wor
 
 ### In this repo
 
-- **Secret `RELEASE_TOKEN`.** A token that can act on the three library repos. Either:
-  - a GitHub App installed on drivine4j, drivine and drivine-python, with repository permissions
-    **Actions: read and write**, **Contents: read and write**, **Pull requests: read and write**, and
-    **Checks: read**, its installation token stored as the secret (or minted per run); or
-  - a fine-grained personal access token with resource owner `liberation-data`, access to those three repos, and
-    the same permissions. Fine-grained tokens don't offer Checks; nothing here needs it.
+- **Secret `RELEASE_TOKEN`.** A fine-grained personal access token with resource owner `liberation-data`, access to
+  drivine4j, drivine and drivine-python, and repository permissions **Actions: read and write**, **Contents: read and
+  write** and **Pull requests: read and write**. (A GitHub App's installation token expires after an hour, so a
+  stored one won't do: Preflight alone can wait longer than that. Using an App would need a step that mints a token
+  each run, which these workflows don't have.)
 
   What the controller itself does with it: start workflows (Actions: write), read files, tags and branches
   (Contents: read), and list PRs (Pull requests: read). The write permissions on Contents and Pull requests are for

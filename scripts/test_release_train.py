@@ -18,7 +18,7 @@ class BumpTest(unittest.TestCase):
         self.assertEqual(bump("0.3.0", "patch"), "0.3.1")
         self.assertEqual(bump("0.3.0", "minor"), "0.4.0")
         self.assertEqual(bump("3.3.0", "major"), "4.0.0")
-        self.assertEqual(bump("0.3.0", "prerelease"), "0.3.1-rc.1")
+        self.assertEqual(bump("0.3.0", "prerelease"), "0.3.1-rc.0")
 
     def test_from_a_prerelease(self):
         self.assertEqual(bump("0.4.0-rc.1", "patch"), "0.4.0")
@@ -26,7 +26,9 @@ class BumpTest(unittest.TestCase):
         self.assertEqual(bump("0.4.1-rc.1", "minor"), "0.5.0")
         self.assertEqual(bump("4.0.0-rc.2", "major"), "4.0.0")
         self.assertEqual(bump("0.4.0-rc.1", "prerelease"), "0.4.0-rc.2")
-        self.assertEqual(bump("0.4.0-beta", "prerelease"), "0.4.0-beta.1")
+        self.assertEqual(bump("0.4.0-rc.0", "prerelease"), "0.4.0-rc.1")
+        self.assertEqual(bump("0.4.0-beta", "prerelease"), "0.4.0-rc.0")
+        self.assertEqual(bump("0.4.0-beta.2", "prerelease"), "0.4.0-rc.0")
 
     def test_exact_and_bad(self):
         self.assertEqual(resolve_target("0.3.0", "1.0.0"), "1.0.0")

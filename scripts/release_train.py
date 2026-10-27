@@ -164,8 +164,8 @@ def is_version(version: str) -> bool:
 
 
 def bump(version: str, kind: str) -> str:
-    """Bumps as npm's semver does, except that a prerelease of a release starts at `-rc.1`, never `-0`:
-    PEP 440 reads `X.Y.Z-0` as a post-release, so the controller never makes one."""
+    """Bumps as npm's semver does, with `prerelease` as `--preid rc`, as the libraries' prepare-release.yml does:
+    a release goes to `X.Y.(Z+1)-rc.0`, an `-rc.N` counts up, and any other prerelease starts over at `-rc.0`."""
     major, minor, patch, pre = parse(version)
     if kind == "major":
         return f"{major}.0.0" if pre and minor == 0 and patch == 0 else f"{major + 1}.0.0"
@@ -175,12 +175,15 @@ def bump(version: str, kind: str) -> str:
         return f"{major}.{minor}.{patch}" if pre else f"{major}.{minor}.{patch + 1}"
     if kind == "prerelease":
         if not pre:
-            return f"{major}.{minor}.{patch + 1}-rc.1"
+            return f"{major}.{minor}.{patch + 1}-rc.0"
         parts = pre.split(".")
-        if parts[-1].isdigit():
-            parts[-1] = str(int(parts[-1]) + 1)
+        numeric = [i for i, p in enumerate(parts) if p.isdigit()]
+        if numeric:
+            parts[numeric[-1]] = str(int(parts[numeric[-1]]) + 1)
         else:
-            parts.append("1")
+            parts.append("0")
+        if parts[0] != "rc" or not parts[1].isdigit():
+            parts = ["rc", "0"]
         return f"{major}.{minor}.{patch}-{'.'.join(parts)}"
     raise ReleaseError(f"Unknown bump {kind}: use one of {', '.join(BUMPS)}")
 
