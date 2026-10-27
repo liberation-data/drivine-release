@@ -1,0 +1,42 @@
+# Records a train as released, once every library in trains/<train>.json has released: checks each library's
+# v<version> tag and its registry (Maven Central, npm, PyPI) and the spec tag, then sets the manifest's released
+# date, commits it, and creates the GitHub Release train-<train>, "Drivine <train>".
+name: Record train
+
+on:
+  workflow_dispatch:
+    inputs:
+      train:
+        description: The train to record, YYYY.MM (or YYYY.MM.N)
+        type: string
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: record-train
+  cancel-in-progress: false
+
+jobs:
+  record:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check that every library shipped
+        env:
+          # Only reads public repos, so this repo's token does when RELEASE_TOKEN isn't set.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN || github.token }}
+          TRAIN: ${{ inputs.train }}
+        run: python3 scripts/record_train.py --train "$TRAIN" --notes-out "$RUNNER_TEMP/notes.md"
+      - name: Commit the manifest and create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN: ${{ inputs.train }}
+          NOTES: ${{ runner.temp }}/notes.md
+          BASE: ${{ github.event.repository.default_branch }}
+        run: scripts/publish-train.sh

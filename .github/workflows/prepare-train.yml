@@ -1,0 +1,85 @@
+# Prepares a release train: runs Preflight, starts each chosen library's prepare-release.yml to open its release PR,
+# and opens a PR to this repo with the train's draft manifest, trains/<train>.json. Merging each library's release
+# PR releases that library. Then run Record train.
+name: Prepare train
+
+on:
+  workflow_dispatch:
+    inputs:
+      train:
+        description: The train's name, YYYY.MM (or YYYY.MM.N). Empty means this month.
+        type: string
+        default: ''
+      drivine4j:
+        description: 'drivine4j: skip, patch, minor, major, prerelease, or an exact version'
+        type: string
+        default: skip
+      drivine:
+        description: 'drivine: skip, patch, minor, major, prerelease, or an exact version'
+        type: string
+        default: skip
+      drivine-python:
+        description: 'drivine-python: skip, patch, minor, major, prerelease, or an exact version'
+        type: string
+        default: skip
+      strict_spec:
+        description: Fail, not warn, when the libraries test against different Cypher spec tags
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: prepare-train
+  cancel-in-progress: false
+
+jobs:
+  preflight:
+    uses: ./.github/workflows/preflight.yml
+    with:
+      strict_spec: ${{ inputs.strict_spec }}
+    secrets:
+      RELEASE_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+
+  prepare:
+    needs: preflight
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    outputs:
+      train: ${{ steps.prepare.outputs.train }}
+      manifest: ${{ steps.prepare.outputs.manifest }}
+      prs: ${{ steps.prepare.outputs.prs }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Open the libraries' release PRs
+        id: prepare
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          TRAIN: ${{ inputs.train }}
+          DRIVINE4J: ${{ inputs.drivine4j }}
+          DRIVINE: ${{ inputs.drivine }}
+          DRIVINE_PYTHON: ${{ inputs.drivine-python }}
+        run: |
+          python3 scripts/prepare_train.py --train "$TRAIN" \
+            --drivine4j "$DRIVINE4J" --drivine "$DRIVINE" --drivine-python "$DRIVINE_PYTHON"
+
+  manifest:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Open the draft manifest's PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TRAIN: ${{ needs.prepare.outputs.train }}
+          MANIFEST: ${{ needs.prepare.outputs.manifest }}
+          PRS: ${{ needs.prepare.outputs.prs }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: scripts/open-manifest-pr.sh

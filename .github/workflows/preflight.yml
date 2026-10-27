@@ -1,0 +1,51 @@
+# Checks that drivine4j, drivine and drivine-python are ready to release: each default branch's latest CI run is
+# green, all three test against the same Cypher spec tag, and a release dry run of each succeeds. The dry runs are
+# release.yml started by workflow_dispatch, which never publishes. Prepare train runs this first.
+name: Preflight
+
+on:
+  workflow_dispatch:
+    inputs:
+      strict_spec:
+        description: Fail, not warn, when the libraries test against different Cypher spec tags
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      strict_spec:
+        type: boolean
+        default: false
+    secrets:
+      RELEASE_TOKEN:
+        required: true
+    outputs:
+      spec:
+        description: The Cypher spec tag all three test against, or empty when they differ
+        value: ${{ jobs.preflight.outputs.spec }}
+
+permissions:
+  contents: read
+
+jobs:
+  preflight:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    outputs:
+      spec: ${{ steps.check.outputs.spec }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check the three libraries
+        id: check
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          STRICT_SPEC: ${{ inputs.strict_spec }}
+        run: |
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::The RELEASE_TOKEN secret isn't set. README.md says what it needs."
+            exit 1
+          fi
+          args=()
+          if [[ "$STRICT_SPEC" == true ]]; then args+=(--strict-spec); fi
+          python3 scripts/preflight.py "${args[@]}"
