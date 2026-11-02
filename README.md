@@ -84,6 +84,21 @@ All three workflows are under **Actions** in this repo, and start with **Run wor
    links and the spec tag. It closes the draft manifest PR if that's still open. Maven Central can take a while to
    show a new version; if that's the only failure, run Record train again later.
 
+   Last, it links each library's own GitHub Release `v<version>` back to the train, by adding a line to the end of
+   its notes:
+
+   > Part of [Drivine 2026.11](https://github.com/liberation-data/drivine-release/releases/tag/train-2026.11), with
+   > drivine4j 0.4.1, drivine-python 0.3.2 and Cypher spec v0.21.0.
+
+   The line names the other libraries and the spec, and ends with the hidden marker `<!-- drivine-train -->`.
+   Running it again replaces the marked line instead of adding another, and the rest of the notes is kept as it is.
+   A library tagged without a GitHub Release gets a warning and is skipped. This step uses `RELEASE_TOKEN` (see
+   [Settings](#settings)), as this repo's own token can't edit releases in the library repos; if it fails, the train
+   is still recorded, and running Record train again with `backlink_only` links the releases.
+
+   With **`backlink_only`** it checks and records nothing, and only links the libraries' releases, for a train
+   that's already recorded as released (such as one recorded before this step existed).
+
 ## Settings
 
 ### In this repo
@@ -95,8 +110,9 @@ All three workflows are under **Actions** in this repo, and start with **Run wor
   each run, which these workflows don't have.)
 
   What the controller itself does with it: start workflows (Actions: write), read files, tags and branches
-  (Contents: read), and list PRs (Pull requests: read). The write permissions on Contents and Pull requests are for
-  using the same token as `RELEASE_PR_TOKEN` below. The token is only ever given to a step as `GH_TOKEN`.
+  (Contents: read), list PRs (Pull requests: read), and add the train's line to each library's GitHub Release
+  (Contents: write). The write permission on Pull requests is for using the same token as `RELEASE_PR_TOKEN` below.
+  The token is only ever given to a step as `GH_TOKEN`.
 - **Settings → Actions → General → Workflow permissions:** turn on "Allow GitHub Actions to create and approve pull
   requests", so Prepare train can open the draft manifest PR with this repo's `GITHUB_TOKEN`.
 - **`main`:** Record train pushes the recorded manifest to `main` with `GITHUB_TOKEN`. If `main` is protected, let
@@ -122,9 +138,10 @@ python3 -m unittest discover -s scripts                       # the version, tra
 GH_TOKEN=... python3 scripts/preflight.py --no-dry-run --no-wait-ci
 GH_TOKEN=... python3 scripts/prepare_train.py --plan-only --drivine4j minor --drivine skip --drivine-python patch
 GH_TOKEN=... python3 scripts/record_train.py --train 2026.11 --check-only
+GH_TOKEN=... python3 scripts/record_train.py --train 2026.11 --link-releases --dry-run   # prints each new release body
 ```
 
-`--no-dry-run`, `--plan-only` and `--check-only` start nothing and write nothing to GitHub.
+`--no-dry-run`, `--plan-only`, `--check-only` and `--dry-run` start nothing and write nothing to GitHub.
 
 ## License
 

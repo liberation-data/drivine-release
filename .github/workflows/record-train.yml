@@ -1,6 +1,8 @@
 # Records a train as released, once every library in trains/<train>.json has released: checks each library's
 # v<version> tag and its registry (Maven Central, npm, PyPI) and the spec tag, then sets the manifest's released
-# date, commits it, and creates the GitHub Release train-<train>, "Drivine <train>".
+# date, commits it, and creates the GitHub Release train-<train>, "Drivine <train>". Last, it adds a line to each
+# library's GitHub Release v<version> that links back to train-<train>. With backlink_only it only adds that line, for
+# a train already recorded.
 name: Record train
 
 on:
@@ -10,6 +12,10 @@ on:
         description: The train to record, YYYY.MM (or YYYY.MM.N)
         type: string
         required: true
+      backlink_only:
+        description: Only link each library's release to the train, for a train already recorded as released
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -28,6 +34,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Check that every library shipped
+        if: ${{ !inputs.backlink_only }}
         env:
           # It only reads the public library repos, so this repo's token does; RELEASE_TOKEN isn't needed.
           GH_TOKEN: ${{ github.token }}
@@ -41,9 +48,27 @@ jobs:
           fi
           python3 scripts/record_train.py --train "$TRAIN" --notes-out "$RUNNER_TEMP/notes.md"
       - name: Commit the manifest and create the release
+        if: ${{ !inputs.backlink_only }}
         env:
           GH_TOKEN: ${{ github.token }}
           TRAIN: ${{ inputs.train }}
           NOTES: ${{ runner.temp }}/notes.md
           BASE: ${{ github.event.repository.default_branch }}
         run: scripts/publish-train.sh
+      - name: Link each library's release to the train
+        env:
+          # Editing a release in the library repos needs Contents: write there, which this repo's token doesn't have.
+          # RELEASE_TOKEN is given to this step only.
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          TRAIN: ${{ inputs.train }}
+          BASE: ${{ github.event.repository.default_branch }}
+        run: |
+          if [[ "$GITHUB_REF" != "refs/heads/$BASE" ]]; then
+            echo "::error::Run Record train from $BASE, not $GITHUB_REF"
+            exit 1
+          fi
+          if [[ -z "$GH_TOKEN" ]]; then
+            echo "::error::The secret RELEASE_TOKEN isn't set, so the libraries' releases can't be linked to the train"
+            exit 1
+          fi
+          python3 scripts/record_train.py --train "$TRAIN" --link-releases
