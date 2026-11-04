@@ -9,7 +9,13 @@ notes for the GitHub Release.
 When trains/<train>.json isn't on this checkout (its draft PR isn't merged), it's read from origin's train/<train>
 branch.
 
+With --link-releases it checks nothing and records nothing: for a train already recorded as released, it adds a line
+to the end of each library's GitHub Release v<version> that links back to the train's release, train-<train>, and
+names the other libraries and the spec tag. The line ends with the marker <!-- drivine-train -->, so running it again
+replaces the line instead of adding another. A library tagged without a GitHub Release gets a warning.
+
 Usage: record_train.py --train 2026.11 [--check-only] [--notes-out notes.md] [--date YYYY-MM-DD]
+       record_train.py --train 2026.11 --link-releases [--dry-run]
 """
 
 from __future__ import annotations
@@ -94,7 +100,98 @@ def notes(manifest: dict, tags: dict[str, str]) -> str:
     return "\n".join(lines) + "\n"
 
 
+BACKLINK_MARKER = "<!-- drivine-train -->"
+
+
+def backlink_line(manifest: dict, name: str) -> str:
+    """The line a library's release gets: the train, the other libraries' versions and the spec tag, then the marker."""
+    train = manifest["train"]
+    others = [f"{other} {version}" for other, version in manifest["libraries"].items() if other != name]
+    parts = [*others, f"Cypher spec {manifest['spec']}"]
+    listed = parts[0] if len(parts) == 1 else f"{', '.join(parts[:-1])} and {parts[-1]}"
+    return (f"Part of [Drivine {train}](https://github.com/{OWNER}/drivine-release/releases/tag/train-{train}), "
+            f"with {listed}. {BACKLINK_MARKER}")
+
+
+def with_backlink(body: str | None, line: str) -> str:
+    """The release body with `line` in place of the line that carries the marker, or added at the end after a blank
+    line when none does. The rest of the body is kept as it is, and its line endings are used for anything added."""
+    body = body or ""
+    newline = "\r\n" if "\r\n" in body else "\n"
+    lines = body.splitlines(keepends=True)
+    marked = [i for i, text in enumerate(lines) if BACKLINK_MARKER in text]
+    if marked:
+        first = lines[marked[0]]
+        ending = first[len(first.rstrip("\r\n")):]
+        lines[marked[0]] = line + ending
+        # A second marked line (from an edit by hand) would say the same again.
+        return "".join(text for i, text in enumerate(lines) if i not in marked[1:])
+    rest = body.rstrip("\r\n")
+    return f"{rest}{newline}{newline}{line}" if rest else line
+
+
+def release_for(repo: str, tag: str) -> dict | None:
+    """The GitHub Release for a tag as {id, body}, or None when the tag has no release."""
+    proc = gh("api", f"repos/{repo}/releases/tags/{tag}", "--jq", "{id, body}", check=False)
+    if proc.returncode == 0:
+        return json.loads(proc.stdout)
+    if "404" in proc.stderr or "Not Found" in proc.stderr:
+        return None
+    raise ReleaseError(f"Couldn't read {repo}'s release {tag}: {proc.stderr.strip()}")
+
+
+def link_releases(args) -> int:
+    train = check_train(args.train)
+    manifest = load_manifest(train)
+    check_manifest(train, manifest)
+    if not manifest.get("released"):
+        raise ReleaseError(f"Train {train} isn't recorded as released yet. Run Record train without backlink_only")
+
+    failed = False
+    rows = []
+    for name, version in manifest["libraries"].items():
+        lib = BY_NAME[name]
+        try:
+            tag = find_tag(lib.repo, version)
+            if not tag:
+                error(f"{name}: {lib.repo} has no tag v{version}")
+                failed = True
+                rows.append(f"| {name} | {version} | tag missing |")
+                continue
+            release = release_for(lib.repo, tag)
+            if release is None:
+                warning(f"{name}: {lib.repo} has tag {tag} but no GitHub Release for it, so there's nothing to link")
+                rows.append(f"| {name} | {version} | no release for {tag} |")
+                continue
+            body = with_backlink(release.get("body"), backlink_line(manifest, name))
+            if args.dry_run:
+                print(f"::group::{lib.repo} {tag}\n{body}\n::endgroup::", flush=True)
+                rows.append(f"| {name} | {version} | dry run |")
+            elif body == (release.get("body") or ""):
+                rows.append(f"| {name} | {version} | already linked |")
+            else:
+                gh("api", "-X", "PATCH", f"repos/{lib.repo}/releases/{release['id']}", "-f", f"body={body}",
+                   "--jq", ".id")
+                rows.append(f"| {name} | {version} | [linked](https://github.com/{lib.repo}/releases/tag/{tag}) |")
+        except ReleaseError as e:
+            # Each library is tried, so one that fails doesn't leave the others unlinked.
+            error(f"{name}: {e}")
+            failed = True
+            rows.append(f"| {name} | {version} | failed |")
+
+    summary("\n".join([
+        f"## Link the libraries' releases to train {train}",
+        "",
+        "| Library | Version | Release |",
+        "| --- | --- | --- |",
+        *rows,
+    ]))
+    return 1 if failed else 0
+
+
 def run(args) -> int:
+    if args.link_releases:
+        return link_releases(args)
     train = check_train(args.train)
     manifest = load_manifest(train)
     check_manifest(train, manifest)
@@ -156,7 +253,14 @@ def main() -> int:
     parser.add_argument("--check-only", action="store_true", help="check, and leave the manifest file as it is")
     parser.add_argument("--notes-out", help="write the release notes here (printed otherwise)")
     parser.add_argument("--date", help="the released date; today (UTC) when absent")
-    return run(parser.parse_args())
+    parser.add_argument("--link-releases", action="store_true",
+                        help="only add the train's line to each library's release, for a train already recorded")
+    parser.add_argument("--dry-run", action="store_true",
+                        help="with --link-releases, print each new release body and edit nothing")
+    args = parser.parse_args()
+    if args.dry_run and not args.link_releases:
+        parser.error("--dry-run goes with --link-releases; use --check-only to check a train without recording it")
+    return run(args)
 
 
 if __name__ == "__main__":
