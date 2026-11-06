@@ -1,0 +1,13 @@
+{
+  "train": "2026.11.3",
+  "spec": "v0.30.0",
+  "libraries": {
+    "drivine4j": "0.6.0",
+    "drivine": "3.5.1",
+    "drivine-python": "0.4.1"
+  },
+  "released": null,
+  "pending": [
+    "drivine4j"
+  ]
+}
