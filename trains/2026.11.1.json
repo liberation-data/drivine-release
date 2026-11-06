@@ -6,10 +6,5 @@
     "drivine": "3.5.0",
     "drivine-python": "0.4.0"
   },
-  "released": null,
-  "pending": [
-    "drivine4j",
-    "drivine",
-    "drivine-python"
-  ]
+  "released": "2026-11-06"
 }
