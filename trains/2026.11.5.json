@@ -4,7 +4,7 @@
   "libraries": {
     "drivine4j": "0.6.2",
     "drivine": "4.0.0",
-    "drivine-python": "0.5.1"
+    "drivine-python": "0.6.0"
   },
   "released": null,
   "pending": [
