@@ -99,6 +99,16 @@ All three workflows are under **Actions** in this repo, and start with **Run wor
    With **`backlink_only`** it checks and records nothing, and only links the libraries' releases, for a train
    that's already recorded as released (such as one recorded before this step existed).
 
+5. **Reconcile the north-star checklist.** Once the train is recorded, bring the north-star tracker
+   ([drivine-cypher-spec#119](https://github.com/liberation-data/drivine-cypher-spec/issues/119)) up to date with
+   what shipped: tick any pillar whose deliverable landed in this train, close the sub-issues that are now genuinely
+   done (leaving real open work with a note), and fix any line that no longer matches the code. Judge "done" from
+   shipped reality — released versions, the switch tasks that are closed, the code actually in the shared module —
+   not from an epic's open or closed state, which lags behind by tail items long after the deliverable ships. This
+   keeps one authoritative record of what's done, so the project's state doesn't drift between trains and work isn't
+   repeated for want of knowing it was finished. This step changes no code and gates nothing; it's bookkeeping, done
+   by a person.
+
 ## Settings
 
 ### In this repo
